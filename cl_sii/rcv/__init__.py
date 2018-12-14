@@ -11,7 +11,7 @@ SII RCV ("Registro de Compras y Ventas").
 """
 import csv
 import io
-from typing import Callable
+from typing import Dict, Generator
 
 from . import parse
 
@@ -19,9 +19,8 @@ from . import parse
 def process_rcv_csv_file(
     text_stream: io.TextIOBase,
     rcv_owner_rut: str,
-    row_data_handler: Callable,
     max_data_rows: int = None,
-) -> int:
+) -> Generator[Dict, None, int]:
     """
     Process a RCV CSV file.
 
@@ -34,14 +33,11 @@ def process_rcv_csv_file(
 
     :param text_stream: a file-like object, not necessarily a real file
     :param rcv_owner_rut: RCV file owner's RUT
-    :param row_data_handler: function be called with parsed row data
     :param max_data_rows: max number of data rows to process (raise exception if exceeded);
         ``None`` means no limit
     :return: number of data rows processed
 
     """
-    # TODO: convert to iterator. That way we do not need the 'row_data_handler' and we can also use
-    #   the same function to retrieve the collection of deserialized rows.
 
     csv_reader = parse.create_rcv_csv_reader(text_stream, expected_fields_strict=True)
     schema = parse.RcvCsvRowSchema(context=dict(receptor_rut=rcv_owner_rut))
@@ -57,12 +53,8 @@ def process_rcv_csv_file(
             except Exception as exc:
                 exc_msg = "Error deserializing row {} of CSV file: {}".format(row_ix, exc)
                 raise Exception(exc_msg) from exc
-            try:
-                row_data_handler(row_ix, deserialized_row_data)
-            except Exception as exc:
-                exc_msg = "Error in row_data_handler for row {} of CSV file: {}".format(row_ix, exc)
-                raise Exception(exc_msg) from exc
 
+            yield deserialized_row_data
         # The first row in the CSV file is not a data row; it is the headers row.
         rows_processed = csv_reader.line_num - 1
     except csv.Error as exc:
