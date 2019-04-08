@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" targetNamespace="http://www.sii.cl/XMLSchema" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs1:element name="RESPUESTA" type="xs:RESPUESTAType" xmlns:xs="http://www.sii.cl/XMLSchema" xmlns:xs1="http://www.w3.org/2001/XMLSchema"/>
+  <xs:complexType name="RESP_HDRType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="ESTADO"/>
+      <xs:element type="xs:string" name="GLOSA"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="RESP_BODYType">
+    <xs:sequence>
+      <xs:element ref="DATOS_CONSULTA"/>
+      <xs:element ref="CESION" maxOccurs="unbounded" minOccurs="0"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="RESPUESTAType">
+    <xs:sequence>
+      <xs1:element type="xs:RESP_HDRType" name="RESP_HDR" xmlns:xs="http://www.sii.cl/XMLSchema" xmlns:xs1="http://www.w3.org/2001/XMLSchema"/>
+      <xs1:element type="xs:RESP_BODYType" name="RESP_BODY" xmlns:xs="http://www.sii.cl/XMLSchema" xmlns:xs1="http://www.w3.org/2001/XMLSchema"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

@@ -1,0 +1,9 @@
+HTTP/1.1 200 OK
+Date: Mon, 08 Apr 2019 21:03:24 GMT
+Server: version 1.1 version 1.2 Apache
+Content-Disposition: attachment;filename=CESIONES_76389992-6_2_04042019_08042019.txt
+Keep-Alive: timeout=5
+Connection: Keep-Alive
+Transfer-Encoding: chunked
+Content-Type: application/octet-stream;filename=CESIONES_76389992-6_2_04042019_08042019.txt
+Content-Language: es

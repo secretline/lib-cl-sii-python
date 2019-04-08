@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema attributeFormDefault="unqualified" elementFormDefault="qualified" xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="DATOS_CONSULTA" type="DATOS_CONSULTAType"/>
+  <xs:element name="CESION" type="CESIONType"/>
+  <xs:complexType name="DATOS_CONSULTAType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="RUT"/>
+      <xs:element type="xs:string" name="TIPO_CONSULTA"/>
+      <xs:element type="xs:string" name="DESDE_DDMMAAAA"/>
+      <xs:element type="xs:string" name="HASTA_DDMMAAAA"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="CESIONType">
+    <xs:sequence>
+      <xs:element type="xs:string" name="VENDEDOR"/>
+      <xs:element type="xs:string" name="ESTADO_CESION"/>
+      <xs:element type="xs:string" name="DEUDOR"/>
+      <xs:element type="xs:string" name="MAIL_DEUDOR"/>
+      <xs:element name="TIPO_DOC">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="33"/>
+            <xs:enumeration value="34"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="NOMBRE_DOC">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="Factura Electronica"/>
+            <xs:enumeration value="Factura Exenta Electronica"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element type="xs:int" name="FOLIO_DOC"/>
+      <xs:element type="xs:date" name="FCH_EMIS_DTE"/>
+      <xs:element type="xs:int" name="MNT_TOTAL"/>
+      <xs:element type="xs:string" name="CEDENTE"/>
+      <xs:element type="xs:string" name="RZ_CEDENTE"/>
+      <xs:element type="xs:string" name="MAIL_CEDENTE"/>
+      <xs:element type="xs:string" name="CESIONARIO"/>
+      <xs:element type="xs:string" name="RZ_CESIONARIO"/>
+      <xs:element type="xs:string" name="MAIL_CESIONARIO"/>
+      <xs:element type="xs:string" name="FCH_CESION"/>
+      <xs:element type="xs:int" name="MNT_CESION"/>
+      <xs:element type="xs:date" name="FCH_VENCIMIENTO"/>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

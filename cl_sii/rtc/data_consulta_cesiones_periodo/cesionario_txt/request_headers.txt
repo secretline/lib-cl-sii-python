@@ -1,0 +1,15 @@
+POST /cgi_rtc/RTC/RTCConsultaCesiones.cgi HTTP/1.1
+Host: palena.sii.cl
+Connection: keep-alive
+Content-Length: 55
+Pragma: no-cache
+Cache-Control: no-cache
+Origin: https://palena.sii.cl
+Upgrade-Insecure-Requests: 1
+Content-Type: application/x-www-form-urlencoded
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.103 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3
+Referer: https://palena.sii.cl/cgi_rtc/RTC/RTCConsultaCesionesHtml.cgi
+Accept-Encoding: gzip, deflate, br
+Accept-Language: en-US,en;q=0.9,es;q=0.8,es-CL;q=0.7
+Cookie: s_cc=true; NETSCAPE_LIVEWIRE.rut=76389992; NETSCAPE_LIVEWIRE.rutm=76389992; NETSCAPE_LIVEWIRE.dv=6; NETSCAPE_LIVEWIRE.dvm=6; NETSCAPE_LIVEWIRE.clave=SIlZJYNVkGEhMSIKfaS3Z3dwUM; NETSCAPE_LIVEWIRE.mac=2p7m2tpqdjus6bqrbs8hf9q4gh; NETSCAPE_LIVEWIRE.exp=20190408185852; NETSCAPE_LIVEWIRE.sec=0000; NETSCAPE_LIVEWIRE.lms=120; TOKEN=DPPJHZ10BQ2DK; CSESSIONID=DPPJHZ10BQ2DK; RUT_NS=76389992; DV_NS=6; NETSCAPE_LIVEWIRE.locexp=Mon%2C%2008%20Apr%202019%2022%3A58%3A53%20GMT; MISII={"p":false}; EMG=76389992
