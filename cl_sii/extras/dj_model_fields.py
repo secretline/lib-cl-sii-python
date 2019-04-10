@@ -116,6 +116,12 @@ class RutField(django.db.models.Field):
         conversions (otherwise customize :meth:`get_db_prep_value`).
 
         """
+        # TODO: handle the 'AttributeError' that would be raised in this example:
+        #   `MyModel.objects.all().filter(my_rut_field='60910000-1')`
+        #   If not handled, just raise 'TypeError'?
+        #   If handled , is it the best Django-nic way to handle this just to call 'to_python()'
+        #     beforehand? After or before 'get_prep_value()'?
+        #   Look for inspiration in other custom fields implementations.
         value = super().get_prep_value(value)
         return value if value is None else value.canonical
 
