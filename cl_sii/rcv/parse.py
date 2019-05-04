@@ -1,50 +1,22 @@
 import csv
-import io
-from collections import OrderedDict
-from typing import Callable
+from datetime import date
+import logging
+from typing import Mapping, Sequence, Tuple
 
 import marshmallow
 import marshmallow.fields
 import marshmallow.validate
 
+from cl_sii.dte.data_models import DteDataL2, TipoDteEnum
 from cl_sii.extras import mm_fields
+from cl_sii.libs import csv_utils
+from cl_sii.libs import file_processing
 from cl_sii.libs import mm_utils
 from cl_sii.libs import tz_utils
+from cl_sii.rut import Rut
 
 
-_CSV_ROW_DICT_EXTRA_FIELDS_KEY = None
-"""CSV row dict key under which the extra data in the row will be saved."""
-
-_RCV_CSV_EXPECTED_FIELD_NAMES = (
-    'Nro',
-    'Tipo Doc',
-    'Tipo Compra',
-    'RUT Proveedor',
-    'Razon Social',
-    'Folio',
-    'Fecha Docto',
-    'Fecha Recepcion',
-    'Fecha Acuse',
-    'Monto Exento',
-    'Monto Neto',
-    'Monto IVA Recuperable',
-    'Monto Iva No Recuperable',
-    'Codigo IVA No Rec.',
-    'Monto Total',
-    'Monto Neto Activo Fijo',
-    'IVA Activo Fijo',
-    'IVA uso Comun',
-    'Impto. Sin Derecho a Credito',
-    'IVA No Retenido',
-    'Tabacos Puros',
-    'Tabacos Cigarrillos',
-    'Tabacos Elaborados',
-    'NCE o NDE sobre Fact. de Compra',
-    'Codigo Otro Impuesto',
-    'Valor Otro Impuesto',
-    'Tasa Otro Impuesto',
-)
-_RCV_CSV_DIALECT_KEY = 'sii_rcv'
+logger = logging.getLogger(__name__)
 
 
 class _RcvCsvDialect(csv.Dialect):
@@ -71,13 +43,10 @@ class _RcvCsvDialect(csv.Dialect):
     quoting = csv.QUOTE_MINIMAL
 
 
-csv.register_dialect(_RCV_CSV_DIALECT_KEY, _RcvCsvDialect)
-
-
 class RcvCsvRowSchema(marshmallow.Schema):
 
-    EXPECTED_INPUT_FIELDS = tuple(_RCV_CSV_EXPECTED_FIELD_NAMES) + (_CSV_ROW_DICT_EXTRA_FIELDS_KEY, )  # type: ignore  # noqa: E501
-    FIELD_FECHA_RECEPCION_DATETIME_TZ = tz_utils.TZ_CL_SANTIAGO
+    FIELD_FECHA_RECEPCION_DT_TZ = tz_utils.TZ_CL_SANTIAGO
+    FIELD_FECHA_ACUSE_DT_TZ = tz_utils.TZ_CL_SANTIAGO
 
     class Meta:
         strict = True
@@ -94,23 +63,40 @@ class RcvCsvRowSchema(marshmallow.Schema):
         required=True,
         load_from='Folio',
     )
+    emisor_razon_social = marshmallow.fields.String(
+        required=True,
+        load_from='Razon Social',
+    )
     fecha_emision_date = mm_utils.CustomMarshmallowDateField(
         format='%d/%m/%Y',  # e.g. '22/10/2018'
         required=True,
         load_from='Fecha Docto',
     )
-    fecha_recepcion_datetime = marshmallow.fields.DateTime(
+    fecha_recepcion_dt = marshmallow.fields.DateTime(
         format='%d/%m/%Y %H:%M:%S',  # e.g. '23/10/2018 01:54:13'
         required=True,
         load_from='Fecha Recepcion',
     )
-    # note: this field value is set using data passed in the schema context.
-    receptor_rut = mm_fields.RutField(
+    fecha_acuse_dt = marshmallow.fields.DateTime(
+        format='%d/%m/%Y %H:%M:%S',  # e.g. '23/10/2018 01:54:13'
         required=True,
+        allow_none=True,
+        load_from='Fecha Acuse',
     )
     monto_total = marshmallow.fields.Integer(
         required=True,
         load_from='Monto Total',
+    )
+
+    ###########################################################################
+    # fields whose value is set using data passed in the schema context
+    ###########################################################################
+
+    receptor_rut = mm_fields.RutField(
+        required=True,
+    )
+    receptor_razon_social = marshmallow.fields.String(
+        required=True,
     )
 
     @marshmallow.pre_load
@@ -120,133 +106,330 @@ class RcvCsvRowSchema(marshmallow.Schema):
 
         # Set field value only if it was not in the input data.
         in_data.setdefault('receptor_rut', self.context['receptor_rut'])
+        in_data.setdefault('receptor_razon_social', self.context['receptor_razon_social'])
+
+        # Fix missing/default values.
+        if 'Fecha Acuse' in in_data:
+            if in_data['Fecha Acuse'] == '':
+                in_data['Fecha Acuse'] = None
 
         return in_data
 
     @marshmallow.post_load
     def postprocess(self, data: dict) -> dict:
-        # >>> data['fecha_recepcion_datetime'].isoformat()
+        # >>> data['fecha_recepcion_dt'].isoformat()
         # '2018-10-23T01:54:13'
-        data['fecha_recepcion_datetime'] = tz_utils.convert_naive_dt_to_tz_aware(
-            dt=data['fecha_recepcion_datetime'], tz=self.FIELD_FECHA_RECEPCION_DATETIME_TZ)
-        # >>> data['fecha_recepcion_datetime'].isoformat()
+        data['fecha_recepcion_dt'] = tz_utils.convert_naive_dt_to_tz_aware(
+            dt=data['fecha_recepcion_dt'], tz=self.FIELD_FECHA_RECEPCION_DT_TZ)
+        # >>> data['fecha_recepcion_dt'].isoformat()
         # '2018-10-23T01:54:13-03:00'
-        # >>> data['fecha_recepcion_datetime'].astimezone(pytz.UTC).isoformat()
+        # >>> data['fecha_recepcion_dt'].astimezone(pytz.UTC).isoformat()
         # '2018-10-23T04:54:13+00:00'
 
         # note: to express this value in another timezone (but the value does not change), do
-        #   `datetime_obj.astimezone(pytz.timezone('some timezone'))`
+        #   `dt_obj.astimezone(pytz.timezone('some timezone'))`
+
+        if data['fecha_acuse_dt']:
+            data['fecha_acuse_dt'] = tz_utils.convert_naive_dt_to_tz_aware(
+                dt=data['fecha_acuse_dt'], tz=self.FIELD_FECHA_ACUSE_DT_TZ)
 
         return data
 
     @marshmallow.validates_schema(pass_original=True)
     def validate_schema(self, data: dict, original_data: dict) -> None:
-        # Fail validation if there was an unexpected input field.
-        unexpected_input_fields = (
-            set(original_data)
-            - set(self.fields)
-            - set(self.EXPECTED_INPUT_FIELDS)
-        )
-        if unexpected_input_fields:
-            raise marshmallow.ValidationError(
-                'Unexpected input field', field_names=list(unexpected_input_fields))
+        mm_utils.validate_no_unexpected_input_fields(self, data, original_data)
 
     # @marshmallow.validates('field_x')
     # def validate_field_x(self, value):
     #     pass
 
-    ###########################################################################
-    # non-marshmallow-related methods
-    ###########################################################################
+    def to_dte_data_l2(self, data: dict) -> DteDataL2:
+        # note: the data of some serializer fields is not included in the returned struct.
+        #   - fecha_recepcion_dt
+        #   - fecha_acuse_dt
 
-    def deserialize_csv_row(self, row: OrderedDict) -> dict:
         try:
-            result = self.load(row)  # type: marshmallow.UnmarshalResult
-        except marshmallow.ValidationError as exc:
-            exc_msg = "Validation errors during deserialization."
-            validation_error_msgs = dict(exc.normalized_messages())
-            raise ValueError(exc_msg, validation_error_msgs) from exc
+            emisor_rut: Rut = data['emisor_rut']  # type: ignore
+            receptor_rut: Rut = data['receptor_rut']  # type: ignore
+            tipo_dte_int = data['tipo_dte']  # type: ignore
+            folio: int = data['folio']  # type: ignore
+            fecha_emision_date: date = data['fecha_emision_date']  # type: ignore
+            monto_total: int = data['monto_total']  # type: ignore
+            emisor_razon_social: str = data['emisor_razon_social']  # type: ignore
+            receptor_razon_social: str = data['receptor_razon_social']  # type: ignore
+        except KeyError as exc:
+            raise ValueError("Programming error: a referenced field is missing.") from exc
 
-        result_data = result.data  # type: dict
-        result_errors = result.errors  # type: dict
-        if result_errors:
-            raise Exception("Deserialization errors: %s", result_errors)
-        return result_data
+        try:
+            tipo_dte = TipoDteEnum(tipo_dte_int)
+            dte_data = DteDataL2(
+                emisor_rut=emisor_rut,
+                tipo_dte=tipo_dte,
+                folio=folio,
+                fecha_emision_date=fecha_emision_date,
+                receptor_rut=receptor_rut,
+                monto_total=monto_total,
+                emisor_razon_social=emisor_razon_social,
+                receptor_razon_social=receptor_razon_social,
+                # fecha_vencimiento_date='',
+                # firma_documento_dt_naive='',
+                # signature_value='',
+                # signature_x509_cert_pem='',
+                # emisor_giro='',
+                # emisor_email='',
+                # receptor_email='',
+            )
+        except (TypeError, ValueError):
+            raise
+
+        return dte_data
 
 
-def create_rcv_csv_reader(
-    text_stream: io.TextIOBase,
-    expected_fields_strict: bool = True,
-) -> csv.DictReader:
-    # note: mypy wrongly complains: it does not accept 'fieldnames' to be None but that value
-    #   is completely acceptable, and it even is the default!
-    #   > error: Argument "fieldnames" to "DictReader" has incompatible type "None"; expected
-    #   > "Sequence[str]"
-    csv_reader = csv.DictReader(  # type: ignore
-        text_stream,
-        fieldnames=None,  # the values of the first row will be used as the fieldnames
-        restkey=_CSV_ROW_DICT_EXTRA_FIELDS_KEY,
-        dialect=_RCV_CSV_DIALECT_KEY,
-    )
-    if expected_fields_strict and tuple(csv_reader.fieldnames) != _RCV_CSV_EXPECTED_FIELD_NAMES:
-        raise Exception(
-            "CSV file field names do not match those expected, or their order.",
-            csv_reader.fieldnames)
+# # FIXME
+# def row_op(dte_data: DteDataL2) -> bool:
+#     # logger.debug("DTE data %s", str(dte_data.as_dict()))
+#     print(dte_data)
+#     return True
 
-    return csv_reader
+
+# FIXME
+def row_op(schema: RcvCsvRowSchema, deserialized_data: Mapping[str, object]) -> bool:
+    # logger.debug("DTE data %s", str(dte_data.as_dict()))
+    dte_data = schema.to_dte_data_l2(deserialized_data)
+    print(dte_data)
+    return True
 
 
 def process_rcv_csv_file(
-    text_stream: io.TextIOBase,
-    rcv_owner_rut: str,
-    row_data_handler: Callable,
+    rcv_owner_rut: Rut,
+    rcv_owner_razon_social: str,
+    input_file_path: str,
+    output_file_path: str,
+    n_rows_offset: int = 0,
     max_data_rows: int = None,
-) -> int:
+) -> Tuple[int, Sequence[Tuple[int, Mapping, Mapping]]]:
     """
+    FIXME
+
     Process a RCV CSV file.
 
-    Processing steps:
-    - Create a CSV reader, with auto-detection of header names (first row).
-    - Instantiate an schema to parse and deserialize each row.
-    - For each data row:
-        - Using an appropriate schema, deserialize the raw data.
-        - Apply ``row_data_handler`` to the deserialization output.
-
-    :param text_stream: a file-like object, not necessarily a real file
-    :param rcv_owner_rut: RCV file owner's RUT
-    :param row_data_handler: function be called with parsed row data
-    :param max_data_rows: max number of data rows to process (raise exception if exceeded);
-        ``None`` means no limit
-    :return: number of data rows processed
-
     """
-    # TODO: convert to iterator. That way we do not need the 'row_data_handler' and we can also use
-    #   the same function to retrieve the collection of deserialized rows.
+    _CSV_ROW_DICT_EXTRA_FIELDS_KEY = '_extra_csv_fields_data'
 
-    csv_reader = create_rcv_csv_reader(text_stream, expected_fields_strict=True)
-    schema = RcvCsvRowSchema(context=dict(receptor_rut=rcv_owner_rut))
+    expected_input_field_names = (
+        'Nro',
+        'Tipo Doc',  # 'tipo_dte'
+        'Tipo Compra',
+        'RUT Proveedor',  # 'emisor_rut'
+        'Razon Social',  # 'emisor_razon_social'
+        'Folio',  # 'folio'
+        'Fecha Docto',  # 'fecha_emision_date'
+        'Fecha Recepcion',  # 'fecha_recepcion_dt'
+        'Fecha Acuse',  # 'fecha_acuse_dt'
+        'Monto Exento',
+        'Monto Neto',
+        'Monto IVA Recuperable',
+        'Monto Iva No Recuperable',
+        'Codigo IVA No Rec.',
+        'Monto Total',  # 'monto_total'
+        'Monto Neto Activo Fijo',
+        'IVA Activo Fijo',
+        'IVA uso Comun',
+        'Impto. Sin Derecho a Credito',
+        'IVA No Retenido',
+        'Tabacos Puros',
+        'Tabacos Cigarrillos',
+        'Tabacos Elaborados',
+        'NCE o NDE sobre Fact. de Compra',
+        'Codigo Otro Impuesto',
+        'Valor Otro Impuesto',
+        'Tasa Otro Impuesto',
+    )
 
-    try:
-        for row_ix, row_data in enumerate(csv_reader, start=1):
-            if max_data_rows is not None and row_ix > max_data_rows:
-                # TODO: custom exception
-                raise Exception("Exceeded 'max_data_rows' value: {}.".format(max_data_rows))
+    fields_to_remove_names = (
+        'Nro',
+        'Tipo Compra',
+        'Monto Exento',
+        'Monto Neto',
+        'Monto IVA Recuperable',
+        'Monto Iva No Recuperable',
+        'Codigo IVA No Rec.',
+        'Monto Neto Activo Fijo',
+        'IVA Activo Fijo',
+        'IVA uso Comun',
+        'Impto. Sin Derecho a Credito',
+        'IVA No Retenido',
+        'Tabacos Puros',
+        'Tabacos Cigarrillos',
+        'Tabacos Elaborados',
+        'NCE o NDE sobre Fact. de Compra',
+        'Codigo Otro Impuesto',
+        'Valor Otro Impuesto',
+        'Tasa Otro Impuesto',
+    )
 
-            try:
-                deserialized_row_data = schema.deserialize_csv_row(row_data)
-            except Exception as exc:
-                exc_msg = "Error deserializing row {} of CSV file: {}".format(row_ix, exc)
-                raise Exception(exc_msg) from exc
-            try:
-                row_data_handler(row_ix, deserialized_row_data)
-            except Exception as exc:
-                exc_msg = "Error in row_data_handler for row {} of CSV file: {}".format(row_ix, exc)
-                raise Exception(exc_msg) from exc
+    for _field_to_discard in fields_to_remove_names:
+        assert _field_to_discard in expected_input_field_names
 
-        # The first row in the CSV file is not a data row; it is the headers row.
-        rows_processed = csv_reader.line_num - 1
-    except csv.Error as exc:
-        exc_msg = "CSV error for line {} of CSV file: {}".format(csv_reader.line_num, exc)
-        raise Exception(exc_msg) from exc
+    fields_to_remove_names += (_CSV_ROW_DICT_EXTRA_FIELDS_KEY, )
 
-    return rows_processed
+    # TODO: use serializer for output.
+
+    # Marshmallow schema fields whose value is set using data passed in the schema context.
+    output_fields = expected_input_field_names + (
+        'receptor_rut',
+        'receptor_razon_social',
+    )
+
+    output_fields += (
+        'row_op_return_values',
+        'validation_errors',
+        'row_op_errors',
+    )
+
+    row_errors = []
+    n_rows_proccesed = 0
+
+    input_csv_row_schema = RcvCsvRowSchema(context=dict(
+        receptor_rut=rcv_owner_rut,
+        receptor_razon_social=rcv_owner_razon_social,
+    ))
+
+    input_data_enc = 'utf-8'
+    output_data_enc = 'utf-8'
+    # note:
+    #   > If csvfile is a file object, it should be opened with newline=''
+    #   https://docs.python.org/3/library/csv.html#csv.reader
+    with open(input_file_path, mode='rt', encoding=input_data_enc, newline='') as input_f:
+        # Create a CSV reader, with auto-detection of header names (first row).
+        csv_reader = csv_utils.create_csv_dict_reader(
+            input_f,
+            csv_dialect=_RcvCsvDialect,
+            row_dict_extra_fields_key=_CSV_ROW_DICT_EXTRA_FIELDS_KEY,
+            expected_fields_strict=True,
+            expected_field_names=expected_input_field_names,
+        )
+
+        with open(output_file_path, mode='wt', encoding=output_data_enc, newline='') as output_f:
+            csv_writer = csv.DictWriter(
+                output_f,
+                fieldnames=output_fields,
+                dialect='unix',  # csv.unix_dialect
+            )
+            csv_writer.writeheader()
+
+            g = file_processing.csv_rows_mm_deserialization_iterator(
+                csv_reader,
+                row_schema=input_csv_row_schema,
+                n_rows_offset=n_rows_offset,
+                max_data_rows=max_data_rows,
+                fields_to_remove_names=fields_to_remove_names,
+            )
+
+            row_ix = 0
+            for row_ix, row_data, deserialized_row_data, validation_errors in g:
+                logger.debug("Processing row %s. Content: %s", row_ix, repr(row_data))
+
+                if validation_errors:
+                    row_op_return_values = ()
+                    row_op_errors = None
+                else:
+                    # try:
+                    #     emisor_rut: Rut = \
+                    #         deserialized_row_data['emisor_rut']  # type: ignore
+                    #     receptor_rut: Rut = \
+                    #         deserialized_row_data['receptor_rut']  # type: ignore
+                    #     tipo_dte_int = \
+                    #         deserialized_row_data['tipo_dte']  # type: ignore
+                    #     folio: int = \
+                    #         deserialized_row_data['folio']  # type: ignore
+                    #     fecha_emision_date: date = \
+                    #         deserialized_row_data['fecha_emision_date']  # type: ignore
+                    #     monto_total: int = \
+                    #         deserialized_row_data['monto_total']  # type: ignore
+                    #     emisor_razon_social: str = \
+                    #         deserialized_row_data['emisor_razon_social']  # type: ignore
+                    #     receptor_razon_social: str = \
+                    #         deserialized_row_data['receptor_razon_social']  # type: ignore
+                    # except KeyError:
+                    #     logger.fatal(
+                    #         "Programming error: referenced field is not in the deserialized "
+                    #         "row data.", exc_info=True)
+                    #
+                    # try:
+                    #     tipo_dte = TipoDteEnum(tipo_dte_int)
+                    #     dte_data = DteDataL2(
+                    #         emisor_rut=emisor_rut,
+                    #         tipo_dte=tipo_dte,
+                    #         folio=folio,
+                    #         fecha_emision_date=fecha_emision_date,
+                    #         receptor_rut=receptor_rut,
+                    #         monto_total=monto_total,
+                    #         emisor_razon_social=emisor_razon_social,
+                    #         receptor_razon_social=receptor_razon_social,
+                    #         # fecha_vencimiento_date='',
+                    #         # firma_documento_dt_naive='',
+                    #         # signature_value='',
+                    #         # signature_x509_cert_pem='',
+                    #         # emisor_giro='',
+                    #         # emisor_email='',
+                    #         # receptor_email='',
+                    #     )
+                    #     logger.info("DTE data %s", str(dte_data.as_dict()))
+                    #     row_op_return_values = row_op(deserialized_row_data)
+                    #     row_op_errors = None
+                    # except Exception as exc:
+                    #     row_op_return_values = ()
+                    #     row_op_errors = str(exc)
+
+                    # try:
+                    #     dte_data = input_csv_row_schema.to_dte_data_l2(deserialized_row_data)
+                    # except Exception:
+                    #     dte_data = None
+                    #     logger.exception("Programming error.")
+                    #
+                    # if dte_data:
+                    #     try:
+                    #         row_op_return_values = row_op(dte_data)
+                    #         row_op_errors = None
+                    #     except Exception as exc:
+                    #         row_op_return_values = ()
+                    #         row_op_errors = str(exc)
+                    #         logger.exception("row_op error.")
+
+                    try:
+                        row_op_return_values = row_op(input_csv_row_schema, deserialized_row_data)
+                        row_op_errors = None
+                    except Exception as exc:
+                        row_op_return_values = ()
+                        row_op_errors = str(exc)
+                        logger.exception("FIXME row_op error.")
+
+                # Instead of empty dicts, lists, str, etc, we want to have None.
+                validation_errors = validation_errors if validation_errors else None  # type: ignore
+                row_op_errors = row_op_errors if row_op_errors else None  # type: ignore
+
+                # Prepare and write output.
+                output_row_data = dict(row_data)
+                output_row_data.update(dict(
+                    row_op_return_values=row_op_return_values,
+                    validation_errors=validation_errors,
+                    row_op_errors=row_op_errors,
+                ))
+                csv_writer.writerow(output_row_data)
+
+                # Save errors.
+                if validation_errors or row_op_errors:
+                    row_error = dict(
+                        validation_errors=validation_errors,
+                        row_op_errors=row_op_errors,
+                    )
+                    row_errors.append((row_ix, row_data, row_error))
+
+            # de-indent?
+            if row_ix == 0:
+                n_rows_proccesed = 0
+            else:
+                n_rows_proccesed = row_ix - n_rows_offset
+
+    return n_rows_proccesed, row_errors

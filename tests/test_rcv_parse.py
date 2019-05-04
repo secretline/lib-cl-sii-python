@@ -1,6 +1,6 @@
 import unittest
 
-from cl_sii.rcv.parse import RcvCsvRowSchema, create_rcv_csv_reader  # noqa: F401
+from cl_sii.rcv.parse import RcvCsvRowSchema, process_rcv_csv_file  # noqa: F401
 
 
 class RcvCsvRowSchemaTest(unittest.TestCase):
@@ -11,6 +11,6 @@ class RcvCsvRowSchemaTest(unittest.TestCase):
 
 class FunctionsTest(unittest.TestCase):
 
-    def test_create_rcv_csv_reader(self) -> None:
+    def test_process_rcv_csv_file(self) -> None:
         # TODO: implement!
         pass
