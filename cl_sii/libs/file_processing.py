@@ -25,6 +25,7 @@ def csv_rows_mm_deserialization_iterator(
     row_schema: marshmallow.Schema,
     n_rows_offset: int = 0,
     max_data_rows: int = None,
+    fields_to_remove_names: Iterable[str] = None,
 ) -> Iterable[Tuple[int, Mapping[str, object], Mapping[str, object], dict, dict]]:
     """
     CSV rows Marshmallow deserialization iterator.
@@ -42,15 +43,21 @@ def csv_rows_mm_deserialization_iterator(
     :param max_data_rows:
         max number of data rows to process (raise exception if exceeded);
         ``None`` means no limit
+    :param fields_to_remove_names:
+        (optional) the name of each field in ``row_data`` that must be removed
     :returns:
-        yields a tuple of (``row_ix``, ``row_data``,
+        yields a tuple of (``row_ix`` (1-based), ``row_data``,
         ``deserialized_row_data``, ``validation_errors``)
+    :raises MaxRowsExceeded:
+        number of data rows processed exceeded ``max_data_rows``
     :raises RuntimeError:
         on CSV error when iterating over ``csv_reader``
 
     """
+    fields_to_remove_names = fields_to_remove_names or ()
+
     if n_rows_offset < 0:
-        raise ValueError("Param 'n_rows_offset' must be a positive integer.")
+        raise ValueError("Param 'n_rows_offset' must be an integer >= 0.")
 
     try:
         for row_ix, row_data in enumerate(csv_reader, start=1):
@@ -59,6 +66,9 @@ def csv_rows_mm_deserialization_iterator(
 
             if row_ix <= n_rows_offset:
                 continue
+
+            for _field_name in fields_to_remove_names:
+                row_data.pop(_field_name, None)
 
             try:
                 mm_result: marshmallow.UnmarshalResult = row_schema.load(row_data)
