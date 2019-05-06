@@ -206,7 +206,7 @@ def process_rcv_csv_file(
     input_file_path: str,
     output_file_path: str,
     n_rows_offset: int = 0,
-    max_data_rows: int = None,
+    max_n_rows: int = None,
 ) -> Tuple[int, Sequence[Tuple[int, Mapping, Mapping]]]:
     """
     FIXME
@@ -322,7 +322,7 @@ def process_rcv_csv_file(
                 csv_reader,
                 row_schema=input_csv_row_schema,
                 n_rows_offset=n_rows_offset,
-                max_data_rows=max_data_rows,
+                max_n_rows=max_n_rows,
                 fields_to_remove_names=fields_to_remove_names,
             )
 
