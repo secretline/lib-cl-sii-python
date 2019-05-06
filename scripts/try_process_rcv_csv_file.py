@@ -58,7 +58,7 @@ def main(
     input_file_path: str,
     output_file_path: str,
     n_rows_offset: int = 0,
-    max_data_rows: int = 10000,
+    max_n_rows: int = 10000,
 ) -> None:
     start_ts = datetime.now()
 
@@ -69,7 +69,7 @@ def main(
             input_file_path,
             output_file_path,
             n_rows_offset,
-            max_data_rows)
+            max_n_rows)
 
         if n_rows_proccesed == 0:
             logger.warning("No rows were processed.")
@@ -109,7 +109,7 @@ if __name__ == '__main__':
     #     input_file_path=sys.argv[3],
     #     output_file_path=sys.argv[4],
     #     n_rows_offset=int(sys.argv[5]),
-    #     max_data_rows=int(sys.argv[6]),
+    #     max_n_rows=int(sys.argv[6]),
     # )
     main(
         rcv_owner_rut=Rut('76389992-6', validate_dv=True),
@@ -117,5 +117,5 @@ if __name__ == '__main__':
         input_file_path='wip/rcv/RCV_COMPRA_REGISTRO_76389992-6_201904.csv',
         output_file_path='wip/rcv/RCV_COMPRA_REGISTRO_76389992-6_201904 output.csv',
         n_rows_offset=0,
-        # max_data_rows=int(sys.argv[5]),
+        # max_n_rows=int(sys.argv[6]),
     )
