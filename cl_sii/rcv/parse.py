@@ -45,8 +45,8 @@ class _RcvCsvDialect(csv.Dialect):
 
 class RcvCsvRowSchema(marshmallow.Schema):
 
-    FIELD_FECHA_RECEPCION_DT_TZ = tz_utils.TZ_CL_SANTIAGO
-    FIELD_FECHA_ACUSE_DT_TZ = tz_utils.TZ_CL_SANTIAGO
+    FIELD_FECHA_RECEPCION_DT_TZ = DteDataL2.DATETIME_FIELDS_TZ
+    FIELD_FECHA_ACUSE_DT_TZ = DteDataL2.DATETIME_FIELDS_TZ
 
     class Meta:
         strict = True
